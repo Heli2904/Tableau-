@@ -1,0 +1,617 @@
+1) Orphan Datasources – Data Sources that has no Connected workbook
+
+SELECT
+
+ds.id as "Datasource Id", ds.name as "Datasource Name",
+case when ds.data_engine_extracts = 'True' then 'extract' else 'live' end as datasource_type, ds.created_at as "Created As",
+case when ds.data_engine_extracts = 'true' then coalesce(ds.extracts_refreshed_at,ds.created_at)
+
+/*when ds.data_engine_extracts = 'false' then coalesce(ds.extracts_refreshed_at,to_timestamp('live','DD-MM-YY hh24:mi:ss')::timestamp without time zone)*/
+
+else ds.extracts_refreshed_at end as "Extracts Refreshed At",
+/*ds.extracts_refreshed_at,*/
+
+ds.updated_at as "Updated At",
+
+/*ds.data_engine_extracts,*/ coalesce(dst.last_access_time,ds.updated_at) as "Last Access Time", p.name as "Project Name",
+s.name as "Site Name", u.friendly_name as "Owner Name", nb_connected_workbooks
+FROM public.datasources ds left JOIN (
+SELECT dbname, site_id,
+count(id) as nb_connected_workbooks
+
+FROM public.data_connections
+
+WHERE owner_type = 'Workbook' and dbclass = 'sqlproxy'
+
+GROUP BY dbname, site_id
+
+) dc ON ds.repository_url = dc.dbname AND ds.site_id = dc.site_id
+
+JOIN public.projects p ON ds.project_id = p.id
+
+JOIN public.sites s ON ds.site_id = s.id
+
+JOIN _users u on ds.owner_id = u.id
+
+left join _datasources_stats dst on dst.datasource_id = ds.id
+
+WHERE ds.parent_workbook_id is null and nb_connected_workbooks is null order by s.name
+
+
+2)	Group Information – Information of all the user with their site roles
+
+SELECT _system_users.name, _system_users.friendly_name, _users.licensing_role_id,
+_users.licensing_role_name, users.publisher_tristate, _sites.name as Site, CASE
+WHEN users.admin_level = 5 then 'Site Administrator'
+
+WHEN _system_users.admin_level = 10 then 'Server Administrator'
+
+WHEN _users.licensing_role_name = 'Viewer' and users.publisher_tristate = 2 then 'Viewer
+(can publish)'
+
+WHEN _users.licensing_role_name = 'Unlicensed' and users.publisher_tristate = 2 then
+'Unlicensed (can publish)'
+
+WHEN users.publisher_tristate = 1 then 'publisher (Implicit)' WHEN users.publisher_tristate = 2 then 'Publisher'
+else _users.licensing_role_name
+
+END as CorrectRoles
+
+FROM _users
+
+LEFT JOIN _system_users
+
+ON _users.system_user_id = _system_users.id
+
+LEFT JOIN _sites
+
+ON _users.site_id = _sites.id
+
+INNER JOIN users
+
+ON _users.id = users.id
+
+ORDER BY _system_users.friendly_name
+
+3)	User Activity & Workbook activity - How many views per users on particular workbook
+
+
+SELECT "historical_events"."id" AS "id", "historical_events"."historical_event_type_id" AS "historical_event_type_id", CAST("historical_events"."worker" AS TEXT) AS "worker", "historical_events"."duration_in_ms" AS "duration_in_ms", "historical_events"."is_failure" AS "is_failure", CAST("historical_events"."details" AS TEXT) AS "details", "historical_events"."created_at" AS "created_at", "historical_events"."hist_actor_user_id" AS "hist_actor_user_id", "historical_events"."hist_target_user_id" AS "hist_target_user_id", "historical_events"."hist_actor_site_id" AS "hist_actor_site_id", "historical_events"."hist_target_site_id" AS "hist_target_site_id", "historical_events"."hist_project_id" AS "hist_project_id", "historical_events"."hist_workbook_id" AS "hist_workbook_id", "historical_events"."hist_view_id" AS "hist_view_id", "historical_events"."hist_datasource_id" AS "hist_datasource_id", "historical_events"."hist_comment_id" AS "hist_comment_id", "historical_events"."hist_tag_id" AS "hist_tag_id", "historical_events"."hist_group_id" AS "hist_group_id", "historical_events"."hist_licensing_role_id" AS "hist_licensing_role_id", "historical_events"."hist_schedule_id" AS "hist_schedule_id", "historical_events"."hist_task_id" AS "hist_task_id", "historical_events"."hist_data_connection_id" AS "hist_data_connection_id", "historical_events"."hist_config_id" AS "hist_config_id", "historical_events"."hist_capability_id" AS "hist_capability_id", "hist_sites"."id" AS "id (hist_sites)",
+"hist_sites"."site_id" AS "site_id",
+
+CAST("hist_sites"."name" AS TEXT) AS "name (hist_sites)",
+
+CAST("hist_sites"."url_namespace" AS TEXT) AS "url_namespace", "hist_users_actor"."id" AS "id (hist_users)", "hist_users_actor"."user_id" AS "user_id", CAST("hist_users_actor"."name" AS TEXT) AS "name (hist_users)",
+CAST("hist_users_actor"."domain_name" AS TEXT) AS "domain_name", CAST("hist_users_actor"."email" AS TEXT) AS "email", "hist_users_actor"."system_user_id" AS "system_user_id", "hist_users_actor"."system_admin_level" AS "system_admin_level", "hist_users_actor"."hist_licensing_role_id" AS "hist_licensing_role_id (hist_users)", "hist_users_actor"."site_admin_level" AS "site_admin_level", "hist_users_actor"."publisher_tristate" AS "publisher_tristate", "hist_users_actor"."site_role_id" AS "site_role_id",
+"hist_workbooks"."id" AS "id (hist_workbooks)", "hist_workbooks"."workbook_id" AS "workbook_id", CAST("hist_workbooks"."name" AS TEXT) AS "name (hist_workbooks)",
+CAST("hist_workbooks"."repository_url" AS TEXT) AS "repository_url (hist_workbooks)", "hist_workbooks"."size" AS "size (hist_workbooks)",
+CAST("hist_workbooks"."revision" AS TEXT) AS "revision (hist_workbooks)", "historical_event_types"."type_id" AS "type_id",
+CAST("historical_event_types"."name" AS TEXT) AS "name (historical_event_types)", CAST("historical_event_types"."action_type" AS TEXT) AS "action_type",
+"_users"."id" AS "id (_users)", "_users"."name" AS "name", "_users"."login_at" AS "login_at", "_users"."friendly_name" AS "friendly_name",
+"_users"."licensing_role_id" AS "licensing_role_id", "_users"."licensing_role_name" AS "licensing_role_name", "_users"."domain_id" AS "domain_id", "_users"."system_user_id" AS "system_user_id (_users)", "_users"."domain_name" AS "domain_name (_users)",
+
+"_users"."domain_short_name" AS "domain_short_name", "_users"."site_id" AS "site_id (_users)"
+FROM "public"."historical_events" "historical_events"
+
+LEFT JOIN "public"."hist_sites" "hist_sites" ON ("historical_events"."hist_actor_site_id" = "hist_sites"."id")
+
+LEFT JOIN "public"."hist_users" "hist_users_actor" ON ("historical_events"."hist_actor_user_id" = "hist_users_actor"."id")
+
+LEFT JOIN "public"."hist_workbooks" "hist_workbooks" ON ("historical_events"."hist_workbook_id" = "hist_workbooks"."id")
+
+LEFT JOIN "public"."historical_event_types" "historical_event_types" ON ("historical_events"."historical_event_type_id" = "historical_event_types"."type_id")
+
+LEFT JOIN "public"."_users" "_users" ON ("hist_users_actor"."user_id" = "_users"."id")
+
+
+4)	User Subscription – Gives the information about user subscription
+
+SELECT "Subscription Content"."subscription_id" AS "subscription_id",
+
+CAST("Subscription Content"."subscription_type" AS TEXT) AS "subscription_type", "Subscription Content"."item_id" AS "item_id",
+CAST("Subscription Content"."repository_url" AS TEXT) AS "repository_url", "Subscription Content"."name" AS "name",
+"Subscription Content"."workbook_id" AS "workbook_id", "Subscription Content"."created_at" AS "created_at", "Subscription Content"."updated_at" AS "updated_at",
+CAST("Subscription Content"."description" AS TEXT) AS "description",
+"Subscription Content"."customized_view_creator_id" AS "customized_view_creator_id", "Subscription Content"."customized_view_creator_sysname" AS
+"customized_view_creator_sysname",
+
+"Subscription Content"."customized_view_creator_friendly_name" AS "customized_view_creator_friendly_name",
+
+"Subscription Content"."customized_view_creator_email" AS "customized_view_creator_email",
+
+"Subscription Content"."view_id" AS "view_id",
+
+"Subscription Content"."view_published" AS "view_published",
+
+"Subscription Content"."view_index" AS "view_index", CAST("Subscription Content"."view_fields" AS TEXT) AS "view_fields", CAST("Subscription Content"."view_title" AS TEXT) AS "view_title", CAST("Subscription Content"."view_caption" AS TEXT) AS "view_caption", "Subscription Content"."view_sheet_id" AS "view_sheet_id",
+"Subscription Content"."view_state" AS "view_state", "Subscription Content"."view_sheettype" AS "view_sheettype",
+"Subscription Content"."view_first_published_at" AS "view_first_published_at", "Subscription Content"."view_for_cache_updated_at" AS "view_for_cache_updated_at", "Subscription"."id" AS "id (subscriptions)",
+CAST("Subscription"."subject" AS TEXT) AS "subject", "Subscription"."user_id" AS "user_id", "Subscription"."schedule_id" AS "schedule_id", "Subscription"."last_sent" AS "last_sent", "Subscription"."site_id" AS "site_id (Subscription)", "Subscription"."luid" AS "luid (Subscription)", "Subscription"."creator_id" AS "creator_id (Subscription)", "Subscription"."data_condition_type" AS "data_condition_type", "Subscription"."data_condition" AS "data_condition",
+"Subscription"."is_refresh_extract_triggered" AS "is_refresh_extract_triggered", "Subscription"."data_specification" AS "data_specification", "Subscription"."created_at" AS "created_at (Subscription)", "Subscription"."subscription_message_id" AS "subscription_message_id", "Schedule"."id" AS "id (schedules)",
+"Schedule"."name" AS "name (schedules)", "Schedule"."active" AS "active", "Schedule"."priority" AS "priority", "Schedule"."schedule_type" AS "schedule_type",
+"Schedule"."day_of_week_mask" AS "day_of_week_mask", "Schedule"."day_of_month_mask" AS "day_of_month_mask",
+
+"Schedule"."start_at_minute" AS "start_at_minute", "Schedule"."minute_interval" AS "minute_interval", "Schedule"."end_at_minute" AS "end_at_minute", "Schedule"."end_schedule_at" AS "end_schedule_at", "Schedule"."run_next_at" AS "run_next_at", "Schedule"."created_at" AS "created_at (schedules)", "Schedule"."updated_at" AS "updated_at (schedules)", "Schedule"."hidden" AS "hidden", "Schedule"."serial_collection_id" AS "serial_collection_id", "Schedule"."lock_version" AS "lock_version (schedules)", "Schedule"."scheduled_action" AS "scheduled_action", "Schedule"."luid" AS "luid (Schedule)", "Schedule"."defined_by" AS "defined_by", CAST("Schedule"."timezoneid" AS TEXT) AS "timezoneid",
+"subscriptions_customized_views"."id" AS "id (subscriptions_customized_views)",
+
+"subscriptions_customized_views"."subscription_id" AS "subscription_id
+(subscriptions_customized_views)", "subscriptions_customized_views"."customized_view_id" AS "customized_view_id", "customized_views"."id" AS "id (customized_views)",
+"customized_views"."name" AS "name (customized_views)", CAST("customized_views"."description" AS TEXT) AS "description (customized_views)", "customized_views"."view_id" AS "view_id (customized_views)", "customized_views"."repository_url" AS "repository_url (customized_views)", "customized_views"."created_at" AS "created_at (customized_views)", "customized_views"."updated_at" AS "updated_at (customized_views)", "customized_views"."creator_id" AS "creator_id",
+"customized_views"."public" AS "public", "customized_views"."size" AS "size", "customized_views"."site_id" AS "site_id (customized_views)",
+"customized_views"."repository_data_id" AS "repository_data_id",
+
+"customized_views"."repository_thumbnail_data_id" AS "repository_thumbnail_data_id", "customized_views"."url_id" AS "url_id",
+"customized_views"."start_view_id" AS "start_view_id", "customized_views"."luid" AS "luid (customized_views)", "customized_views"."data_id" AS "data_id", "customized_views"."thumbnail_id" AS "thumbnail_id", "workbooks"."id" AS "id (workbooks)", "workbooks"."name" AS "name (workbooks)",
+CAST("workbooks"."repository_url" AS TEXT) AS "repository_url (workbooks)", CAST("workbooks"."description" AS TEXT) AS "description (workbooks)", "workbooks"."created_at" AS "created_at (workbooks)", "workbooks"."updated_at" AS "updated_at (workbooks)", "workbooks"."owner_id" AS "owner_id",
+"workbooks"."project_id" AS "project_id", "workbooks"."view_count" AS "view_count", "workbooks"."size" AS "size (workbooks)", CAST("workbooks"."embedded" AS TEXT) AS "embedded", "workbooks"."thumb_user" AS "thumb_user",
+"workbooks"."refreshable_extracts" AS "refreshable_extracts", "workbooks"."extracts_refreshed_at" AS "extracts_refreshed_at", "workbooks"."lock_version" AS "lock_version", "workbooks"."state" AS "state (workbooks)", "workbooks"."version" AS "version",
+"workbooks"."checksum" AS "checksum", "workbooks"."display_tabs" AS "display_tabs", "workbooks"."data_engine_extracts" AS "data_engine_extracts", "workbooks"."incrementable_extracts" AS "incrementable_extracts", "workbooks"."site_id" AS "site_id (workbooks)", "workbooks"."revision" AS "revision",
+"workbooks"."repository_data_id" AS "repository_data_id (workbooks)",
+
+"workbooks"."repository_extract_data_id" AS "repository_extract_data_id", "workbooks"."first_published_at" AS "first_published_at", "workbooks"."primary_content_url" AS "primary_content_url", "workbooks"."share_description" AS "share_description", "workbooks"."show_toolbar" AS "show_toolbar", "workbooks"."extracts_incremented_at" AS "extracts_incremented_at", "workbooks"."default_view_index" AS "default_view_index", "workbooks"."luid" AS "luid (workbooks)",
+"workbooks"."asset_key_id" AS "asset_key_id (workbooks)", "workbooks"."document_version" AS "document_version", "workbooks"."content_version" AS "content_version", "workbooks"."last_published_at" AS "last_published_at", "workbooks"."data_id" AS "data_id (workbooks)", "workbooks"."reduced_data_id" AS "reduced_data_id", "workbooks"."published_all_sheets" AS "published_all_sheets", "sites"."id" AS "id (sites)",
+"sites"."name" AS "name (sites)", "sites"."url_namespace" AS "url_namespace", "sites"."status" AS "status",
+"sites"."created_at" AS "created_at (sites)", "sites"."updated_at" AS "updated_at (sites)", "sites"."user_quota" AS "user_quota", "sites"."content_admin_mode" AS "content_admin_mode", "sites"."storage_quota" AS "storage_quota", "sites"."metrics_level" AS "metrics_level", "sites"."status_reason" AS "status_reason", "sites"."subscriptions_enabled" AS "subscriptions_enabled",
+CAST("sites"."custom_subscription_footer" AS TEXT) AS "custom_subscription_footer", CAST("sites"."custom_subscription_email" AS TEXT) AS "custom_subscription_email", "sites"."luid" AS "luid (sites)",
+
+"sites"."query_limit" AS "query_limit", "sites"."authoring_disabled" AS "authoring_disabled", "sites"."sheet_image_enabled" AS "sheet_image_enabled", "sites"."refresh_token_setting" AS "refresh_token_setting", "sites"."version_history_enabled" AS "version_history_enabled", "sites"."notification_enabled" AS "notification_enabled", "sites"."content_version_limit" AS "content_version_limit", "sites"."subscribe_others_enabled" AS "subscribe_others_enabled", "sites"."lock_version" AS "lock_version (sites)", "sites"."guest_access_enabled" AS "guest_access_enabled", "sites"."support_access_enabled" AS "support_access_enabled", "sites"."cache_warmup_enabled" AS "cache_warmup_enabled", "sites"."cache_warmup_threshold" AS "cache_warmup_threshold", "sites"."data_alerts_enabled" AS "data_alerts_enabled", "sites"."allow_live_query_sync" AS "allow_live_query_sync", "sites"."commenting_enabled" AS "commenting_enabled",
+"sites"."self_service_schedules_enabled" AS "self_service_schedules_enabled", "sites"."tier_interactor_capacity" AS "tier_interactor_capacity", "sites"."tier_basic_user_capacity" AS "tier_basic_user_capacity", "sites"."tier_author_capacity" AS "tier_author_capacity", "sites"."viz_in_tooltip_enabled" AS "viz_in_tooltip_enabled",
+"users"."id" AS "id", "users"."login_at" AS "login_at", "users"."nonce" AS "nonce", "users"."row_limit" AS "row_limit", "users"."storage_limit" AS "storage_limit", "users"."created_at" AS "created_at (users)",
+"users"."extracts_required" AS "extracts_required", "users"."updated_at" AS "updated_at (users)", "users"."raw_data_suppressor_tristate" AS "raw_data_suppressor_tristate",
+
+"users"."site_id" AS "site_id", "users"."system_user_id" AS "system_user_id", "users"."system_admin_auto" AS "system_admin_auto", "users"."luid" AS "luid",
+"users"."lock_version" AS "lock_version (users)", "users"."site_role_id" AS "site_role_id", "_users"."id" AS "id (_users)",
+"_users"."name" AS "name (_users)", "_users"."login_at" AS "login_at (_users)", "_users"."friendly_name" AS "friendly_name (_users)", "_users"."licensing_role_id" AS "licensing_role_id (_users)", "_users"."licensing_role_name" AS "licensing_role_name", "_users"."domain_id" AS "domain_id (_users)", "_users"."system_user_id" AS "system_user_id (_users)", "_users"."domain_name" AS "domain_name", "_users"."domain_short_name" AS "domain_short_name", "_users"."site_id" AS "site_id (_users)",
+"_sites"."id" AS "id (_sites)", "_sites"."name" AS "name (_sites)", "_sites"."url_namespace" AS "url_namespace (_sites)", "_sites"."status" AS "status (_sites)"
+FROM (SELECT
+scv.subscription_id       AS subscription_id ,
+
+'Customized View'         AS subscription_type , cv.id                     AS item_id ,
+v.repository_url          AS repository_url , cv.name ,
+v.id                      AS workbook_id , cv.created_at ,
+
+cv.updated_at ,
+
+NULL                      AS description ,
+
+cv.creator_id             AS customized_view_creator_id , su.name                   AS customized_view_creator_sysname , su.friendly_name          AS customized_view_creator_friendly_name , su.email                  AS customized_view_creator_email ,
+
+
+-- View fields
+
+v.id                      AS view_id ,
+
+v.published               AS view_published , v.index                   AS view_index , v.fields                  AS view_fields ,
+v.title                   AS view_title , v.caption                 AS view_caption , v.sheet_id                AS view_sheet_id , v.state                   AS view_state , v.sheettype               AS view_sheettype ,
+v.first_published_at      AS view_first_published_at , v.for_cache_updated_at    AS view_for_cache_updated_at
+FROM subscriptions_customized_views scv
+
+INNER JOIN customized_views cv
+
+ON scv.customized_view_id = cv.id
+
+INNER JOIN views v
+
+ON cv.view_id = v.id
+
+INNER JOIN users u
+
+ON cv.creator_id = u.id
+
+INNER JOIN system_users su
+
+ON u.system_user_id = su.id
+
+UNION SELECT
+
+sw.subscription_id        AS subscription_id ,
+
+'Workbook'                AS subscription_type , w.id                      AS item_id , w.repository_url          AS repository_url , w.name ,
+w.id                      AS workbook_id , w.created_at ,
+w.updated_at , w.description ,
+NULL                      AS customized_view_creator_id ,
+
+NULL                      AS customized_view_creator_sysname , NULL                      AS customized_view_creator_friendly_name , NULL                      AS customized_view_creator_email ,
+
+
+-- View fields
+
+NULL                      AS view_id ,
+
+NULL                      AS view_published , NULL                      AS view_index , NULL                      AS view_fields , NULL                      AS view_title ,
+NULL                      AS view_caption , NULL                      AS view_sheet_id , NULL                      AS view_state , NULL                      AS view_sheettype ,
+NULL                      AS view_first_published_at , NULL                      AS view_for_cache_updated_at
+FROM subscriptions_workbooks sw
+
+INNER JOIN workbooks w
+
+ON sw.repository_url = w.repository_url
+
+UNION
+
+-- Generic fields
+
+sv.subscription_id        AS subscription_id ,
+
+'View'                    AS subscription_type , v.id                      AS item_id , v.repository_url          AS repository_url , v.name ,
+v.workbook_id             AS workbook_id , v.created_at ,
+v.updated_at , v.description ,
+NULL                      AS customized_view_creator_id ,
+
+NULL                      AS customized_view_creator_sysname , NULL                      AS customized_view_creator_friendly_name , NULL                      AS customized_view_creator_email ,
+
+
+-- View fields
+
+v.id                      AS view_id ,
+
+v.published               AS view_published , v.index                   AS view_index , v.fields                  AS view_fields ,
+v.title                   AS view_title , v.caption                 AS view_caption , v.sheet_id                AS view_sheet_id , v.state                   AS view_state , v.sheettype               AS view_sheettype ,
+v.first_published_at      AS view_first_published_at , v.for_cache_updated_at    AS view_for_cache_updated_at
+FROM subscriptions_views sv
+
+INNER JOIN views v
+
+ON sv.repository_url = v.repository_url
+
+) "Subscription Content"
+
+INNER JOIN "public"."subscriptions" "Subscription" ON ("Subscription
+Content"."subscription_id" = "Subscription"."id")
+
+INNER JOIN "public"."schedules" "Schedule" ON ("Subscription"."schedule_id" = "Schedule"."id")
+
+LEFT JOIN "public"."subscriptions_customized_views" "subscriptions_customized_views" ON ("Subscription"."id" = "subscriptions_customized_views"."id")
+
+LEFT JOIN "public"."customized_views" "customized_views" ON ("subscriptions_customized_views"."customized_view_id" = "customized_views"."id")
+
+INNER JOIN "public"."workbooks" "workbooks" ON ("Subscription Content"."workbook_id" = "workbooks"."id")
+
+INNER JOIN "public"."sites" "sites" ON ("workbooks"."site_id" = "sites"."id") RIGHT JOIN "public"."users" "users" ON ("Subscription"."user_id" = "users"."id") LEFT JOIN "public"."_users" "_users" ON ("users"."id" = "_users"."id")
+LEFT JOIN "public"."_sites" "_sites" ON ("users"."site_id" = "_sites"."id")
+
+
+5)	 Workbook with zero views – Workbooks which have zero views on it
+SELECT content.id                                          AS "Id" , content.name                                        AS "Name", content.repository_url                              AS "Repository URL" , COALESCE(content.view_workbook_repository_url,
+content.repository_url)                         AS "Root Repository URL" , content.created_at                                  AS "Created At" , content.updated_at                                  AS "Updated At" , content.first_published_at                          AS "First Published At" , content.owner_id                                    AS "Owner Id" ,
+content.type                                        AS "Type", content.site_id                                     AS "Site Id" ,
+
+s.name                                              AS "Site Name" , content.project_id                                  AS "Project Id" , p.name                                              AS "Project Name" , content.size                                        AS "Size (bytes)" ,
+content.refreshable_extracts                        AS "Refreshable Extracts" , content.incrementable_extracts                      AS "Incrementable Extracts" , content.extracts_refreshed_at                       AS "Extracts Refreshed At" , content.extracts_incremented_at                     AS "Extracts Incremented At" , CASE
+WHEN EXISTS (
+SELECT 1
+
+FROM tasks t
+
+WHERE t.type IN ('RefreshExtractTask','IncrementExtractTask') AND t.obj_id = content.id
+AND t.obj_type = content.type
+
+) THEN true
+
+ELSE false
+
+END                                                 AS "Extracts Scheduled" , access_stats.last_access_date                       AS "Last Access Date (180 days)" , coalesce(
+access_stats.access_count_last_10_days ,
+
+0 )                                             AS "Access Count (10 days)" , coalesce(
+access_stats.access_count_last_30_days ,
+
+0 )                                             AS "Access Count (30 days)" , coalesce(
+access_stats.access_count_last_60_days ,
+
+0 )                                             AS "Access Count (60 days)" , coalesce(
+
+access_stats.access_count_last_90_days ,
+
+0 )                                             AS "Access Count (90 days)" , coalesce(
+access_stats.access_count_last_180_days ,
+
+0 )                                             AS "Access Count (180 days)" , content.revision                                    AS "Revision" , su_owner.name                                       AS "Owner System Name" , su_owner.friendly_name                              AS "Owner Name" , su_owner.email                                      AS "Owner Email" , lr_owner.name                                       AS "Owner License" ,
+
+
+-- workbook stuff
+
+workbook_view_count                                 AS "Workbook View Count" , workbook_display_tabs                               AS "Workbook Display Tabs" , workbook_default_view_index                         AS "Workbook Default View Index" , workbook_show_toolbar                               AS "Workbook Show Toolbar" ,
+
+
+-- datasource stuff
+
+datasource_db_class                                 AS "Datasource DB Class" , datasource_server_name                              AS "Datasource Server Name" , datasource_server_port                              AS "Datasource Server Port" , datasource_db_name                                  AS "Datasource DB Name" , datasource_table_name                               AS "Datasource Table Name" , datasource_data_engine_extracts                     AS "Datasource Data Engine Extracts" , datasource_connectable                              AS "Datasource Connectable" , datasource_is_hierarchical                          AS "Datasource Is Hierarchical" ,
+
+
+-- view stuff
+
+view_locked                                         AS "View Locked" , view_published                                      AS "View Published" ,
+
+view_workbook_id                                    AS "View Workbook Id" , view_workbook_name                                  AS "View Workbook Name" , view_workbook_repository_url                        AS "View Workbook Repository URL" , view_index                                          AS "View Index" ,
+view_fields                                         AS "View Fields" , view_title                                          AS "View Title" , view_caption                                        AS "View Caption" , view_sheet_id                                       AS "View Sheet Id" , view_sheettype                                      AS "View Sheettype" ,
+view_for_cache_update_at                            AS "View For Cache Update At" FROM
+( SELECT
+id , name , repository_url , created_at , updated_at , first_published_at , owner_id ,
+'Workbook'                                      AS type , site_id ,
+project_id , size , refreshable_extracts , incrementable_extracts , extracts_refreshed_at ,
+extracts_incremented_at , revision ,
+
+-- workbook stuff
+
+view_count                                      AS workbook_view_count , display_tabs                                    AS workbook_display_tabs , default_view_index                              AS workbook_default_view_index , show_toolbar                                    AS workbook_show_toolbar ,
+
+
+-- datasource stuff
+
+NULL                                            AS datasource_db_class , NULL                                            AS datasource_server_name , NULL                                            AS datasource_server_port , NULL                                            AS datasource_db_name , NULL                                            AS datasource_table_name ,
+NULL                                            AS datasource_data_engine_extracts , NULL                                            AS datasource_connectable ,
+NULL                                            AS datasource_is_hierarchical ,
+
+
+
+-- view stuff
+
+CAST(NULL AS boolean)                           AS view_locked , CAST(NULL AS boolean)                           AS view_published , CAST(NULL AS integer)                           AS view_workbook_id , CAST(NULL AS varchar(255))                      AS view_workbook_name ,
+CAST(NULL AS varchar(255))                      AS view_workbook_repository_url , CAST(NULL AS integer)                           AS view_index ,
+NULL                                            AS view_fields , NULL                                            AS view_title , NULL                                            AS view_caption , NULL                                            AS view_sheet_id ,
+NULL                                            AS view_sheettype ,
+
+CAST(NULL AS timestamp)                         AS view_for_cache_update_at
+
+FROM workbooks w
+
+UNION ALL SELECT
+d.id , d.name , d.repository_url , d.created_at , d.updated_at , d.first_published_at , d.owner_id ,
+'Datasource'                                    AS type , d.site_id ,
+d.project_id , d.size , d.refreshable_extracts , d.incrementable_extracts , d.extracts_refreshed_at , d.extracts_incremented_at , d.revision ,
+
+-- workbook-specific columns
+
+NULL                                            AS workbook_view_count , NULL                                            AS workbook_display_tabs ,
+NULL                                            AS workbook_default_view_index , NULL                                            AS workbook_show_toolbar ,
+-- datasource-specific columns
+
+d.db_class                                      AS datasource_db_class , ds.server                                       AS datasource_server_name , ds.port                                         AS datasource_server_port , d.db_name                                       AS datasource_db_name ,
+
+d.table_name                                    AS datasource_table_name , d.data_engine_extracts                          AS datasource_data_engine_extracts , d.connectable                                   AS datasource_connectable , d.is_hierarchical                               AS datasource_is_hierarchical ,
+
+-- view-specific columns
+
+CAST(NULL AS boolean)                           AS view_locked , CAST(NULL AS boolean)                           AS view_published , CAST(NULL AS integer)                           AS view_workbook_id , CAST(NULL AS varchar(255))                      AS view_workbook_name ,
+CAST(NULL AS varchar(255))                      AS view_workbook_repository_url , CAST(NULL AS integer)                           AS view_index ,
+NULL                                            AS view_fields , NULL                                            AS view_title , NULL                                            AS view_caption , NULL                                            AS view_sheet_id ,
+NULL                                            AS view_sheettype ,
+
+CAST(NULL AS timestamp)                         AS view_for_cache_update_at
+
+FROM datasources d
+
+INNER JOIN _datasources ds
+
+ON d.id = ds.id UNION ALL SELECT
+v.id , v.name , v.repository_url , v.created_at , v.updated_at , v.first_published_at , v.owner_id ,
+
+'View'                                          AS type , v.site_id ,
+w_view.project_id ,
+
+NULL                                            AS size ,
+
+NULL                                            AS refreshable_extracts , NULL                                            AS incrementable_extracts , NULL                                            AS extracts_refreshed_at , NULL                                            AS extracts_incremented_at , v.revision ,
+
+
+-- workbook-specific columns
+
+NULL                                            AS workbook_view_count , NULL                                            AS workbook_display_tabs ,
+NULL                                            AS workbook_default_view_index , NULL                                            AS workbook_show_toolbar ,
+
+
+-- datasource-specific columns
+
+NULL                                            AS datasource_db_class , NULL                                            AS datasource_server_name , NULL                                            AS datasource_server_port , NULL                                            AS datasource_db_name , NULL                                            AS datasource_table_name ,
+NULL                                            AS datasource_data_engine_extracts , NULL                                            AS datasource_connectable ,
+NULL                                            AS datasource_is_hierarchical ,
+
+
+
+-- view-specific columns
+
+CAST(v.locked AS boolean)                       AS view_locked , v.published                                     AS view_published , v.workbook_id                                   AS view_workbook_id,
+
+w_view.name                                     AS view_workbook_name , w_view.repository_url                           AS view_workbook_repository_url , v.index                                         AS view_index ,
+v.fields                                        AS view_fields , v.title                                         AS view_title , v.caption                                       AS view_caption , v.sheet_id                                      AS view_sheet_id ,
+v.sheettype                                     AS view_sheettype , v.for_cache_updated_at                          AS view_for_cache_updated_at
+FROM views v
+
+INNER JOIN workbooks w_view
+
+ON v.workbook_id = w_view.id
+
+) AS content
+
+LEFT JOIN users AS u_owner
+
+ON content.owner_id = u_owner.id
+
+LEFT JOIN licensing_roles lr_owner
+
+ON u_owner.id = lr_owner.id
+
+LEFT JOIN system_users AS su_owner
+
+ON u_owner.system_user_id = su_owner.id
+
+LEFT JOIN projects AS p
+
+ON content.project_id = p.id
+
+LEFT JOIN sites AS s
+
+ON content.site_id = s.id
+
+LEFT JOIN
+
+-- Access statistics
+
+( SELECT
+MAX(he.created_at)           AS last_access_date , SUM(1)                       AS access_count_last_180_days , SUM
+
+( CASE
+WHEN age(he.created_at) <= INTERVAL '90 days' THEN 1
+
+ELSE 0
+
+END
+
+)                        AS access_count_last_90_days , SUM
+( CASE
+WHEN age(he.created_at) <= INTERVAL '60 days' THEN 1
+
+ELSE 0
+
+END
+
+)                        AS access_count_last_60_days ,
+
+
+
+SUM ( CASE
+WHEN age(he.created_at) <= INTERVAL '30 days' THEN 1
+
+ELSE 0
+
+END
+
+)                        AS access_count_last_30_days , SUM
+( CASE
+WHEN age(he.created_at) <= INTERVAL '10 days' THEN 1
+
+ELSE 0
+
+END
+
+)                        AS access_count_last_10_days , hd.datasource_id             AS datasource_id , hv.view_id                   AS view_id ,
+
+MAX(CAST(NULL AS int))       AS workbook_id
+
+FROM historical_events he
+
+LEFT JOIN hist_datasources hd
+
+ON he.hist_datasource_id = hd.id
+
+LEFT JOIN hist_views hv
+
+ON he.hist_view_id = hv.id
+
+LEFT JOIN hist_workbooks hw
+
+ON he.hist_workbook_id = hw.id
+
+WHERE he.historical_event_type_id IN (112, 84)   -- Access Datasource, Access View
+
+AND age(he.created_at) <= INTERVAL '180 days' GROUP BY
+hd.datasource_id , hv.view_id
+
+
+UNION ALL
+
+
+
+SELECT
+
+MAX(he.created_at)           AS last_access_date , SUM(1)                       AS access_count_last_180_days , SUM
+( CASE
+WHEN age(he.created_at) <= INTERVAL '90 days' THEN 1
+
+ELSE 0
+
+END
+
+)                        AS access_count_last_90_days , SUM
+( CASE
+WHEN age(he.created_at) <= INTERVAL '60 days' THEN 1
+
+ELSE 0
+
+END
+
+)                        AS access_count_last_60_days , SUM
+( CASE
+WHEN age(he.created_at) <= INTERVAL '30 days' THEN 1
+
+ELSE 0
+
+END
+
+)                        AS access_count_last_30_days , SUM
+( CASE
+WHEN age(he.created_at) <= INTERVAL '10 days' THEN 1
+
+ELSE 0
+
+END
+
+)                        AS access_count_last_10_days , MAX(CAST(NULL AS int))       AS datasource_id , MAX(CAST(NULL AS int))      AS view_id , hw.workbook_id               AS workbook_id
+FROM historical_events he
+
+LEFT JOIN hist_views hv
+
+ON he.hist_view_id = hv.id
+
+LEFT JOIN hist_workbooks hw
+
+ON he.hist_workbook_id = hw.id
+
+WHERE he.historical_event_type_id IN (112, 84)   -- Access Datasource, Access View
+
+AND age(he.created_at) <= INTERVAL '180 days' GROUP BY
+hw.workbook_id
+
+) access_stats
+
+ON
+
+(
+
+content.id = access_stats.datasource_id AND content.type = 'Datasource' OR content.id = access_stats.workbook_id AND content.type = 'Workbook'
+OR content.id = access_stats.view_id AND content.type = 'View'
+
+)
+
+6)	Workbook and view hits (last access time and last modified time)
+
+
+SELECT "views_stats"."id" AS "id", "views_stats"."user_id" AS "user_id", "views_stats"."view_id" AS "view_id", "views_stats"."nviews" AS "nviews", "views_stats"."time" AS "time", "views_stats"."site_id" AS "site_id",
+CAST("views_stats"."device_type" AS TEXT) AS "device_type", "_views"."id" AS "id (_views)",
+"_views"."name" AS "name", CAST("_views"."view_url" AS TEXT) AS "view_url", "_views"."created_at" AS "created_at", "_views"."owner_id" AS "owner_id", "_views"."owner_name" AS "owner_name", "_views"."workbook_id" AS "workbook_id", "_views"."index" AS "index",
+CAST("_views"."title" AS TEXT) AS "title", CAST("_views"."caption" AS TEXT) AS "caption", "_views"."site_id" AS "site_id (_views)", "_workbooks"."id" AS "id (_workbooks)",
+
+"_workbooks"."name" AS "name (_workbooks)", CAST("_workbooks"."workbook_url" AS TEXT) AS "workbook_url", "_workbooks"."created_at" AS "created_at (_workbooks)", "_workbooks"."updated_at" AS "updated_at", "_workbooks"."owner_id" AS "owner_id (_workbooks)", "_workbooks"."project_id" AS "project_id",
+"_workbooks"."size" AS "size", "_workbooks"."view_count" AS "view_count", "_workbooks"."owner_name" AS "owner_name (_workbooks)", "_workbooks"."project_name" AS "project_name", "_workbooks"."system_user_id" AS "system_user_id", "_workbooks"."site_id" AS "site_id (_workbooks)", "_workbooks"."domain_id" AS "domain_id", "_workbooks"."domain_name" AS "domain_name",
+"_sites"."id" AS "id (_sites)", "_sites"."name" AS "name (_sites)", "_sites"."url_namespace" AS "url_namespace", "_sites"."status" AS "status",
+"_users"."id" AS "id (_users)", "_users"."name" AS "name (_users)", "_users"."login_at" AS "login_at", "_users"."friendly_name" AS "friendly_name", "_users"."licensing_role_id" AS "licensing_role_id",
+"_users"."licensing_role_name" AS "licensing_role_name", "_users"."domain_id" AS "domain_id (_users)", "_users"."system_user_id" AS "system_user_id (_users)", "_users"."domain_name" AS "domain_name (_users)", "_users"."domain_short_name" AS "domain_short_name", "_users"."site_id" AS "site_id (_users)"
+FROM "public"."views_stats" "views_stats"
+
+INNER JOIN "public"."_views" "_views" ON ("views_stats"."view_id" = "_views"."id")
+
+INNER JOIN "public"."_workbooks" "_workbooks" ON ("_views"."workbook_id" = "_workbooks"."id")
+
+INNER JOIN "public"."_sites" "_sites" ON ("_views"."site_id" = "_sites"."id")
+
+RIGHT JOIN "public"."_users" "_users" ON ("views_stats"."user_id" = "_users"."id")
+
+
+7)	Data Extarct refersh status in last 6 months 
+
+----- SELECT ds.id as "Datasource Id", ds.name as "Datasource Name",
+case when ds.data_engine_extracts = 'True' then 'extract' else 'live' end as datasource_type, ds.created_at as "Created As",
+case when ds.data_engine_extracts = 'true' then coalesce(ds.extracts_refreshed_at,ds.created_at)
+
+/*when ds.data_engine_extracts = 'false' then coalesce(ds.extracts_refreshed_at,to_timestamp('live','DD-MM-YY hh24:mi:ss')::timestamp without time zone)*/
+
+else ds.extracts_refreshed_at end as "Extracts Refreshed At",
+/*ds.extracts_refreshed_at,*/
+
+ds.updated_at as "Updated At",
+
+/*ds.data_engine_extracts,*/ p.name as "Project Name", s.name as "Site Name" FROM public.datasources ds
+inner JOIN data_connections dc ON dc.owner_id = ds.id
+
+JOIN public.projects p ON ds.project_id = p.id JOIN public.sites s ON ds.site_id = s.id WHERE dc.owner_type = 'Datasource'
