@@ -1,2 +1,1 @@
-# Tableau-
-# Tableau-
+Questies.txt file is for content retirement on tableau server. It contains list of queries which can help manipulate workgroup database tables to query out workbook, user, data sources and group information.
